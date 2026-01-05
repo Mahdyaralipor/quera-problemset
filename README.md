@@ -31,6 +31,6 @@
    	cd problems/<problem-id>
    ``` 
 2. کد را با توجه به زبان مورد استفاده اجرا کنید، برای مثال در صورت استفاده از PHP:
-  ```bash
-      php solution.php < input.txt
-  ```
+   ```bash
+   	php solution.php < input.txt
+   ```
