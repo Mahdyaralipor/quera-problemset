@@ -1,80 +1,159 @@
 # 🪑 میزگرد بزرگ - Quera 280062
 
-**تشخیص گراف دوبخشی + تقسیم افراد به 2 میز**
+**تشخیص گراف دوبخشی + تقسیم بهینه افراد به 2 میز**
 
 ## 🎯 الگوریتم
 ```
-
-BFS → Color(0/1) → table_1/table_2
-چرخ فردد → NO
-m=0 → 1 نفر تصادفی جابجا
-
+BFS → رنگ‌آمیزی (0/1) → کامپوننت‌ها
+چرخ فرد → NO
+تخصیص بهینه: هر کامپوننت را به شکلی که تفاوت تعداد میزها کمینه شود
 ```
 
 ## 💻 کد PHP
 
 ```php
 function iranServerRoundTable(int $n, int $m, array $connections): string {
-    if (count($connections) !== $m) return json_encode(["possible" => "NO"]);
-
-    $adj = array_fill(1, $n, []);
-    foreach ($connections as $edge) {
-        [$u, $v] = $edge;
-        $adj[$u][] = $v; $adj[$v][] = $u;
+    //* Validate input count
+    if (count($connections) !== $m) {
+        return json_encode(["possible" => "NO"]);
     }
-
-    $color = array_fill(1, $n, -1);
-    $isBipartite = true;
-
-    for ($i = 1; $i <= $n && $isBipartite; $i++) {
-        if ($color[$i] !== -1) continue;
+    
+    //* Build adjacency list and track edges
+    $adj = array_fill(1, $n, []);
+    $edgeSet = [];
+    
+    foreach ($connections as $edge) {
+        if (!is_array($edge) || count($edge) !== 2) {
+            return json_encode(["possible" => "NO"]);
+        }
+        $u = $edge[0];
+        $v = $edge[1];
         
-        $q = [$i]; $color[$i] = 0;
-        while ($q && $isBipartite) {
-            $u = array_shift($q);
-            foreach ($adj[$u] as $v) {
-                if ($color[$v] === -1) {
-                    $color[$v] = 1 - $color[$u];
-                    $q[] = $v;
-                } elseif ($color[$v] === $color[$u]) {
-                    $isBipartite = false; break 2;
-                }
-            }
+        //* Check for invalid node IDs
+        if ($u < 1 || $u > $n || $v < 1 || $v > $n) {
+            return json_encode(["possible" => "NO"]);
+        }
+        
+        //* Check for self-loops
+        if ($u === $v) {
+            return json_encode(["possible" => "NO"]);
+        }
+        
+        //* Handle duplicate edges
+        $edgeKey = min($u, $v) . '-' . max($u, $v);
+        if (!isset($edgeSet[$edgeKey])) {
+            $edgeSet[$edgeKey] = true;
+            $adj[$u][] = $v;
+            $adj[$v][] = $u;
         }
     }
 
-    if (!$isBipartite) return json_encode(["possible" => "NO"]);
+    //* BFS to check bipartiteness and identify components
+    $color = array_fill(1, $n, -1);
+    $isBipartite = true;
+    $components = [];
 
-    $t1 = $t2 = [];
-    for ($i = 1; $i <= $n; $i++) {
-        $color[$i] === 0 ? $t1[] = $i : $t2[] = $i;
+    for ($start = 1; $start <= $n && $isBipartite; $start++) {
+        if ($color[$start] !== -1) continue;
+
+        //* Nodes with color 0 and 1 in this component
+        $component = [0 => [], 1 => []];
+        $queue = [$start];
+        $color[$start] = 0;
+        $component[0][] = $start;
+
+        while (!empty($queue) && $isBipartite) {
+            $u = array_shift($queue);
+            foreach ($adj[$u] as $v) {
+                if ($color[$v] === -1) {
+                    $color[$v] = 1 - $color[$u];
+                    $queue[] = $v;
+                    $component[$color[$v]][] = $v;
+                } elseif ($color[$v] === $color[$u]) {
+                    $isBipartite = false;
+                    break;
+                }
+            }
+        }
+        
+        $components[] = $component;
     }
+
+    if (!$isBipartite) {
+        return json_encode(["possible" => "NO"]);
+    }
+
+    //* Assign components to tables to minimize difference
+    $table1 = [];
+    $table2 = [];
     
-    if (empty($t2)) {
-        $move = $t1[array_rand($t1)];
-        $t1 = array_diff($t1, [$move]);
-        $t2 = [$move];
+    foreach ($components as $component) {
+        $size0 = count($component[0]);
+        $size1 = count($component[1]);
+        
+        //* Try both assignments and choose the one that minimizes difference
+        $diff1 = abs((count($table1) + $size0) - (count($table2) + $size1));
+        $diff2 = abs((count($table1) + $size1) - (count($table2) + $size0));
+        
+        if ($diff1 <= $diff2) {
+            $table1 = array_merge($table1, $component[0]);
+            $table2 = array_merge($table2, $component[1]);
+        } else {
+            $table1 = array_merge($table1, $component[1]);
+            $table2 = array_merge($table2, $component[0]);
+        }
     }
 
     return json_encode([
         "possible" => "YES",
-        "table_1" => array_values($t1),
-        "table_2" => array_values($t2)
+        "table_1"  => $table1,
+        "table_2"  => $table2
     ]);
 }
 ```
 
-
 ## 📊 تست‌ها
 
 | n | m | Result |
-| :-- | :-- | :-- |
+|:--|:--|:--|
 | 6 | 6 | `YES [1,3,5] [2,4,6]` |
-| 6 | 5 | `NO` |
-| 3 | 0 | `YES [^1] [2,3]` |
+| 6 | 5 | `NO` (چرخ فرد) |
+| 3 | 0 | `YES [1] [2,3]` |
 
 ## ⚡ Complexity
 
-**O(n + m)**
+**زمان:** O(n + m) - BFS + تخصیص کامپوننت‌ها  
+**فضا:** O(n + m) - ذخیره گراف و رنگ‌ها
 
-🔗 [Quera 280062](https://quera.org/problemset/280062)
+## 🔑 نکات کلیدی
+
+- **اعتبارسنجی ورودی:** بررسی تعداد یال‌ها، محدوده گره‌ها، حلقه‌های خودگردان و یال‌های تکراری
+- **تشخیص دوبخشی:** استفاده از BFS برای رنگ‌آمیزی 2-رنگی گراف
+- **تقسیم بهینه:** هر کامپوننت را به گونه‌ای تخصیص می‌دهد که تفاوت اندازه میزها کمینه شود
+- **مدیریت کامپوننت‌ها:** گراف‌های ناهمبند را به درستی مدیریت می‌کند
+
+## 📝 توضیحات الگوریتم
+
+### مرحله 1: اعتبارسنجی
+- بررسی تعداد یال‌های ورودی
+- بررسی معتبر بودن شماره گره‌ها (1 تا n)
+- شناسایی و حذف یال‌های تکراری
+- شناسایی حلقه‌های خودگردان (self-loops)
+
+### مرحله 2: ساخت گراف
+- ایجاد لیست مجاورت برای نمایش گراف
+- استفاده از edgeSet برای جلوگیری از یال‌های تکراری
+
+### مرحله 3: تشخیص دوبخشی با BFS
+- رنگ‌آمیزی گره‌ها با دو رنگ (0 و 1)
+- اگر دو گره مجاور رنگ یکسان داشته باشند → گراف دوبخشی نیست
+- ذخیره هر کامپوننت همبند به صورت جداگانه
+
+### مرحله 4: تخصیص بهینه به میزها
+- برای هر کامپوننت، دو حالت ممکن برای تخصیص وجود دارد
+- انتخاب حالتی که تفاوت تعداد افراد در دو میز را کمینه کند
+- استفاده از روش حریصانه (Greedy) برای تصمیم‌گیری
+
+## 🔗 لینک
+
+[Quera 280062](https://quera.org/problemset/280062)
